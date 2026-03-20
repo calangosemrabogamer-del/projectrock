@@ -358,87 +358,163 @@ def scan_worker(url: str, passwords: List[str], usernames: List[str], thread_id:
         state.results.append(result)
         state.stats['scanned'] += 1
 
-# ============= SEARCH TERMS BY COUNTRY =============
+# ============= SEARCH TERMS BY COUNTRY (High Profile Businesses) =============
 
 SEARCH_TERMS = {
-    # English speaking countries
     'USA': [
-        'lawyer', 'attorney', 'law firm', 'legal services', 
-        'personal injury lawyer', 'criminal defense attorney', 'family law attorney',
-        'corporate law firm', 'real estate attorney', 'immigration lawyer',
-        'divorce lawyer', 'estate planning attorney', 'business lawyer',
-        'intellectual property lawyer', 'tax attorney', 'employment lawyer'
+        'real estate agency', 'real estate broker', 'property management',
+        'luxury homes', 'commercial real estate', 'medical clinic', 'dental clinic',
+        'hospital', 'healthcare center', 'psychologist', 'psychiatrist',
+        'cosmetic surgery', 'plastic surgery', 'physical therapy', 'chiropractor',
+        'car dealership', 'auto dealer', 'luxury car dealership', 'car repair',
+        'restaurant', 'fine dining', 'cafe', 'coffee shop', 'bakery',
+        'catering', 'gourmet restaurant', 'beauty salon', 'spa',
+        'hair salon', 'nail salon', 'beauty clinic', 'aesthetic clinic',
+        'wellness center', 'yoga studio', 'gym', 'hotel', 'resort',
+        'travel agency', 'tour operator', 'bed and breakfast', 'vacation rental',
+        'private school', 'language school', 'university', 'college',
+        'tutoring center', 'music school', 'driving school', 'accounting firm',
+        'financial advisor', 'insurance agency', 'consulting firm', 'marketing agency',
+        'IT company', 'web design', 'jewelry store', 'furniture store',
+        'clothing store', 'boutique', 'electronics store', 'home improvement',
+        'photography studio', 'event planner', 'wedding planner', 'cleaning service',
+        'moving company', 'locksmith', 'plumber', 'electrician', 'hvac'
     ],
     'UK': [
-        'solicitor', 'lawyer', 'legal firm', 'solicitors near me',
-        'personal injury solicitor', 'family law solicitor', 'commercial solicitor',
-        'property solicitor', 'will writing service', 'legal advice',
-        'employment tribunal', 'criminal defence solicitor', 'conveyancing'
+        'estate agent', 'property management', 'letting agent', 'commercial property',
+        'luxury homes estate agent', 'private clinic', 'dental practice', 'GP surgery',
+        'consultant', 'private hospital', 'psychologist', 'physiotherapy',
+        'car dealership', 'car dealer', 'garage', 'mot', 'car repair',
+        'restaurant', 'bistro', 'cafe', 'tea room', 'bakery', 'catering',
+        'hair salon', 'beauty salon', 'spa', 'nail bar', 'beauty clinic',
+        'hotel', 'bed and breakfast', 'travel agent', 'tour operator',
+        'private school', 'college', 'university', 'tutoring', 'language school',
+        'accountant', 'financial advisor', 'insurance broker', 'consultancy',
+        'jeweller', 'furniture shop', 'clothing boutique', 'department store',
+        'photographer', 'event planner', 'cleaning company', 'removals'
     ],
     'Canada': [
-        'lawyer', 'attorney', 'law firm', 'legal services',
-        'personal injury lawyer', 'family lawyer', 'criminal lawyer',
-        'real estate lawyer', 'immigration lawyer', 'business lawyer',
-        'estate planning lawyer', 'divorce lawyer', 'corporate lawyer'
+        'real estate agent', 'real estate broker', 'property management',
+        'luxury homes', 'commercial real estate', 'medical clinic', 'dental clinic',
+        'hospital', 'health center', 'psychologist', 'physiotherapy', 'chiropractor',
+        'car dealership', 'auto dealer', 'car repair', 'tire shop',
+        'restaurant', 'cafe', 'bakery', 'catering', 'fine dining',
+        'beauty salon', 'spa', 'hair salon', 'nail salon', 'aesthetic clinic',
+        'hotel', 'resort', 'travel agency', 'bed and breakfast',
+        'private school', 'university', 'college', 'tutoring center',
+        'accounting firm', 'financial advisor', 'insurance agency', 'consultant',
+        'jewelry store', 'furniture store', 'boutique', 'clothing store',
+        'photography studio', 'event planner', 'cleaning service', 'moving company'
     ],
     'Australia': [
-        'lawyer', 'solicitor', 'law firm', 'legal services',
-        'personal injury lawyer', 'family lawyer', 'criminal lawyer',
-        'commercial lawyer', 'property lawyer', 'migration agent',
-        'estate planning lawyer', 'corporate lawyer', 'IP lawyer'
+        'real estate agent', 'real estate agency', 'property manager',
+        'luxury homes', 'commercial real estate', 'medical centre', 'dental clinic',
+        'hospital', 'psychologist', 'physiotherapy', 'chiropractor', 'cosmetic clinic',
+        'car dealership', 'car dealer', 'mechanic', 'auto repair',
+        'restaurant', 'cafe', 'bakery', 'catering', 'fine dining',
+        'hair salon', 'beauty salon', 'spa', 'nail salon', 'beauty clinic',
+        'hotel', 'resort', 'travel agent', 'accommodation',
+        'private school', 'university', 'college', 'tuition centre',
+        'accounting firm', 'financial advisor', 'insurance broker', 'consultant',
+        'jeweller', 'furniture store', 'boutique', 'clothing store',
+        'photographer', 'event planner', 'cleaning service', 'removalist'
     ],
-    # Portuguese speaking countries
     'Brazil': [
-        'advogado', 'escritório de advocacia', 'advocacia',
-        'advogado criminalista', 'advogado familiar', 'advogado trabalhista',
-        'advogado empresarial', 'advogado imobiliário', 'advogado de divórcio',
-        'advogado de acidentes', 'advogado tributarista', 'advogado immigration',
-        'direito civil', 'direito penal', 'direito trabalhista',
-        'consultoria jurídica', 'advogado corporativo', 'advogado internacional'
+        'imobiliária', 'corretor de imóveis', 'gestão patrimonial', 'construção civil',
+        'arquitetura', 'engenharia', 'escritório de arquitetura', 'clínica médica',
+        'clínica dentária', 'hospital', 'clínica de estética', 'psicólogo',
+        'fisioterapeuta', 'quiropraxista', 'clínica de reprodução', 'concessionária',
+        'revenda de carros', 'mecânica', 'auto-center', 'pneus', 'restaurante',
+        'restaurante fino', 'café', 'padaria', 'confeitaria', 'catering',
+        'buffet', 'Delivery', 'salão de beleza', 'spa', 'cabeleireiro',
+        'manicure', 'estética', 'clínica estética', 'bem-estar', 'hotel',
+        'pousada', 'resort', 'agência de viagens', 'turismo', 'aluguel de temporada',
+        'escola particular', 'universidade', 'faculdade', 'colégio', 'escola de idiomas',
+        'aula particular', 'cursinho', 'escritório de contabilidade', 'advogado empresarial',
+        'assessoria financeira', 'corretora de seguros', 'consultoria', 'gestão de empresas',
+        'joalheria', 'móveis', 'loja de roupas', 'boutique', 'presentes',
+        'eletrônicos', 'decorações', 'floricultura', 'fotografia', 'fotógrafo',
+        'buffet', 'decoração', 'eventos', 'limpeza', 'mudanças', 'segurança'
     ],
     'Portugal': [
-        'advogado', 'escritório de advogado', 'consultoria jurídica',
-        'advogado criminalista', 'advogado familiar', 'advogado trabalhista',
-        'advogado imobiliário', 'advogado comercial', 'direito civil',
-        'solicitor', 'advogacia', 'mesa de apoio jurídico'
+        'imobiliária', 'mediador imobiliário', 'gestão patrimonial', 'construção',
+        'arquitetura', 'escritório de arquitetura', 'clínica médica', 'clínica dentária',
+        'hospital', 'clínica de estética', 'psicólogo', 'fitioterapeuta', 'quiropraxista',
+        'concessionária', 'venda de carros', 'mecânica', 'restaurante', 'café',
+        'padaria', 'pastelaria', 'catering', 'cabeleireiro', 'salão de beleza',
+        'spa', 'estética', 'hotel', 'pousada', 'agência de viagens', 'turismo',
+        'escola particular', 'universidade', 'colégio', 'escola de idiomas',
+        'escritório de contabilidade', 'consultor financeiro', 'seguros', 'joalharia',
+        'móveis', 'loja de roupas', 'boutique', 'fotografia', 'eventos', 'limpeza', 'mudanças'
     ],
-    # Spanish speaking countries
     'Spain': [
-        'abogado', 'despacho de abogados', 'consultoría jurídica',
-        'abogado penalista', 'abogado familiar', 'abogado laboralista',
-        'abogado inmobiliario', 'abogado mercantil', 'derecho civil',
-        'abogado corporativo', 'abogado de empresas', 'abogado immigration'
+        'inmobiliaria', 'agencia inmobiliaria', 'gestión patrimonial', 'construcción',
+        'arquitectura', 'estudio de arquitectura', 'clínica médica', 'clínica dental',
+        'hospital', 'clínica de estética', 'psicólogo', 'fisioterapeuta', 'quiropractico',
+        'concesionario', 'venta de coches', 'mecánica', 'taller', 'restaurante',
+        'cafetería', 'panadería', 'pastelería', 'catering', 'peluquería',
+        'salón de belleza', 'spa', 'estética', 'hotel', 'pensión', 'agencia de viajes',
+        'turismo', 'colegio privado', 'universidad', 'academia', 'escuela de idiomas',
+        'despacho contable', 'asesor financiero', 'corredor de seguros', 'joyería',
+        'muebles', 'tienda de ropa', 'boutique', 'fotografía', 'eventos', 'limpieza', 'mudanzas'
     ],
     'Mexico': [
-        'abogado', 'bufete de abogados', 'servicios jurídicos',
-        'abogado penalista', 'abogado familiar', 'abogado laboral',
-        'abogado mercantil', 'abogado inmobiliario', 'derecho civil',
-        'abogado corporativo', 'abogado de divorcios', 'consulta jurídica'
+        'inmobiliaria', 'corredor inmobiliario', 'construcción', 'arquitectura',
+        'despacho de arquitectura', 'clínica médica', 'clínica dental', 'hospital',
+        'clínica de estética', 'psicólogo', 'fisioterapeuta', 'quiropractico',
+        'concesionaria', 'venta de autos', 'mecánica', 'taller', 'restaurante',
+        'cafetería', 'panadería', 'repostería', 'catering', 'peluquería',
+        'salón de belleza', 'spa', 'estética', 'hotel', 'posada', 'agencia de viajes',
+        'turismo', 'escuela privada', 'universidad', 'colegio', 'academia',
+        'despacho contable', 'asesor financiero', 'seguro', 'consultoría', 'joyería',
+        'muebles', 'tienda de ropa', 'boutique', 'fotografía', 'eventos', 'limpieza', 'mudanzas'
     ],
     'Argentina': [
-        'abogado', 'estudio jurídico', 'asesoría legal',
-        'abogado penalista', 'abogado familiario', 'abogado laboralista',
-        'abogado inmobiliario', 'abogado comercial', 'derecho civil',
-        'abogado corporativo', 'abogado previsional', 'consulta jurídica'
+        'inmobiliaria', 'corredor inmobiliario', 'construcción', 'arquitectura',
+        'estudio de arquitectura', 'clínica médica', 'clínica dental', 'hospital',
+        'clínica de estética', 'psicólogo', 'fisioterapeuta', 'kinesiólogo',
+        'concesionaria', 'venta de autos', 'mecánica', 'taller', 'restaurante',
+        'café', 'panadería', 'pastelería', 'catering', 'peluquería',
+        'salón de belleza', 'spa', 'estética', 'hotel', 'hostal', 'agencia de viajes',
+        'turismo', 'escuela privada', 'universidad', 'colegio', 'academia',
+        'estudio contable', 'asesor financiero', 'productor de seguros', 'joyería',
+        'muebles', 'tienda de ropa', 'boutique', 'fotografía', 'eventos', 'limpieza', 'mudanzas'
     ],
-    # Other countries
     'Germany': [
-        'Anwalt', 'Rechtsanwalt', 'Anwaltskanzlei', 'Rechtsberatung',
-        'Strafverteidiger', 'Familienanwalt', 'Arbeitsrechtler',
-        'Immobilienanwalt', 'Unternehmensanwalt', 'Erbrechtler',
-        'Verkehrsrecht', 'Mietrecht', 'Gesellschaftsrecht'
+        'Immobilienmakler', 'Immobilienagentur', 'Bauunternehmen', 'Architekturbüro',
+        'Architektur', 'Bauwesen', 'Klinik', 'Krankenhaus', 'Zahnarzt', 'Arztpraxis',
+        'Psychologe', 'Physiotherapie', 'Chiropraktiker', 'Kosmetik', 'Autohaus',
+        'Autoverkauf', 'Werkstatt', 'Kfz-Werkstatt', 'Restaurant', 'Café', 'Bäckerei',
+        'Konditorei', 'Catering', 'Friseur', 'Salon', 'Spa', 'Kosmetikstudio',
+        'Schönheitssalon', 'Hotel', 'Pension', 'Reisebüro', 'Tourismus', 'Ferienwohnung',
+        'Privatschule', 'Universität', 'Schule', 'Nachhilfe', 'Sprachschule',
+        'Steuerberater', 'Finanzberater', 'Versicherungsmakler', 'Beratung', 'Juwelier',
+        'Möbelhaus', 'Kleidungsgeschäft', 'Boutique', 'Fotograf', 'Eventplaner',
+        'Reinigungsservice', 'Umzugsfirma'
     ],
     'France': [
-        'avocat', 'cabinet d\'avocat', 'conseil juridique',
-        'avocat pénal', 'avocat familial', 'avocat du travail',
-        'avocat immobilier', 'avocat d\'entreprise', 'droit civil',
-        'avocat corporate', 'avocat successoral', 'juriste'
+        'agence immobilière', 'courtier en immobilier', 'construction', 'architecte',
+        'cabinet d\'architecture', 'clinique', 'hôpital', 'cabinet médical',
+        'cabinet dentaire', 'psychologue', 'kinésithérapeute', 'chiropracteur',
+        'esthétique', 'concessionnaire', 'vente de voitures', 'garage', 'mécanique',
+        'restaurant', 'café', 'boulangerie', 'pâtisserie', 'traiteur', 'coiffeur',
+        'salon de coiffure', 'spa', 'institut de beauté', 'hôtel', 'pension',
+        'agence de voyage', 'tourisme', 'école privée', 'université', 'école',
+        'cours particuliers', 'cabinet comptable', 'conseiller financier',
+        'courtier en assurances', 'bijouterie', 'magasin de meubles', 'boutique',
+        'magasin de vêtements', 'photographe', 'organisateur d\'événements', 'service de nettoyage'
     ],
     'Italy': [
-        'avvocato', 'studio legale', 'consulenza legale',
-        'avvocato penalista', 'avvocato familiare', 'avvocato del lavoro',
-        'avvocato immobiliare', 'avvocato commerciale', 'diritto civile',
-        'avvocato aziendale', 'avvocato successioni', 'studio giuridico'
+        'agenzia immobiliare', 'mediatore immobiliare', 'costruzioni', 'architettura',
+        'studio di architettura', 'clinica', 'ospedale', 'studio medico',
+        'studio dentistico', 'psicologo', 'fisioterapista', 'chiropratico',
+        'estetica', 'concessionaria', 'vendita auto', 'officina', 'meccanico',
+        'ristorante', 'caffè', 'panetteria', 'pasticceria', 'catering',
+        'parrucchiere', 'salone di bellezza', 'spa', 'centro estetico', 'albergo',
+        'pensione', 'agenzia di viaggi', 'turismo', 'scuola privata', 'università',
+        'scuola', 'ripetizioni', 'studio commerciale', 'consulente finanziario',
+        'broker di assicurazioni', 'gioielleria', 'mobilificio', 'boutique',
+        'negozio di abbigliamento', 'fotografo', 'organizzatore di eventi', 'servizio di pulizia'
     ]
 }
 
