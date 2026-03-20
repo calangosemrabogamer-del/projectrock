@@ -358,6 +358,101 @@ def scan_worker(url: str, passwords: List[str], usernames: List[str], thread_id:
         state.results.append(result)
         state.stats['scanned'] += 1
 
+# ============= SEARCH TERMS BY COUNTRY =============
+
+SEARCH_TERMS = {
+    # English speaking countries
+    'USA': [
+        'lawyer', 'attorney', 'law firm', 'legal services', 
+        'personal injury lawyer', 'criminal defense attorney', 'family law attorney',
+        'corporate law firm', 'real estate attorney', 'immigration lawyer',
+        'divorce lawyer', 'estate planning attorney', 'business lawyer',
+        'intellectual property lawyer', 'tax attorney', 'employment lawyer'
+    ],
+    'UK': [
+        'solicitor', 'lawyer', 'legal firm', 'solicitors near me',
+        'personal injury solicitor', 'family law solicitor', 'commercial solicitor',
+        'property solicitor', 'will writing service', 'legal advice',
+        'employment tribunal', 'criminal defence solicitor', 'conveyancing'
+    ],
+    'Canada': [
+        'lawyer', 'attorney', 'law firm', 'legal services',
+        'personal injury lawyer', 'family lawyer', 'criminal lawyer',
+        'real estate lawyer', 'immigration lawyer', 'business lawyer',
+        'estate planning lawyer', 'divorce lawyer', 'corporate lawyer'
+    ],
+    'Australia': [
+        'lawyer', 'solicitor', 'law firm', 'legal services',
+        'personal injury lawyer', 'family lawyer', 'criminal lawyer',
+        'commercial lawyer', 'property lawyer', 'migration agent',
+        'estate planning lawyer', 'corporate lawyer', 'IP lawyer'
+    ],
+    # Portuguese speaking countries
+    'Brazil': [
+        'advogado', 'escritório de advocacia', 'advocacia',
+        'advogado criminalista', 'advogado familiar', 'advogado trabalhista',
+        'advogado empresarial', 'advogado imobiliário', 'advogado de divórcio',
+        'advogado de acidentes', 'advogado tributarista', 'advogado immigration',
+        'direito civil', 'direito penal', 'direito trabalhista',
+        'consultoria jurídica', 'advogado corporativo', 'advogado internacional'
+    ],
+    'Portugal': [
+        'advogado', 'escritório de advogado', 'consultoria jurídica',
+        'advogado criminalista', 'advogado familiar', 'advogado trabalhista',
+        'advogado imobiliário', 'advogado comercial', 'direito civil',
+        'solicitor', 'advogacia', 'mesa de apoio jurídico'
+    ],
+    # Spanish speaking countries
+    'Spain': [
+        'abogado', 'despacho de abogados', 'consultoría jurídica',
+        'abogado penalista', 'abogado familiar', 'abogado laboralista',
+        'abogado inmobiliario', 'abogado mercantil', 'derecho civil',
+        'abogado corporativo', 'abogado de empresas', 'abogado immigration'
+    ],
+    'Mexico': [
+        'abogado', 'bufete de abogados', 'servicios jurídicos',
+        'abogado penalista', 'abogado familiar', 'abogado laboral',
+        'abogado mercantil', 'abogado inmobiliario', 'derecho civil',
+        'abogado corporativo', 'abogado de divorcios', 'consulta jurídica'
+    ],
+    'Argentina': [
+        'abogado', 'estudio jurídico', 'asesoría legal',
+        'abogado penalista', 'abogado familiario', 'abogado laboralista',
+        'abogado inmobiliario', 'abogado comercial', 'derecho civil',
+        'abogado corporativo', 'abogado previsional', 'consulta jurídica'
+    ],
+    # Other countries
+    'Germany': [
+        'Anwalt', 'Rechtsanwalt', 'Anwaltskanzlei', 'Rechtsberatung',
+        'Strafverteidiger', 'Familienanwalt', 'Arbeitsrechtler',
+        'Immobilienanwalt', 'Unternehmensanwalt', 'Erbrechtler',
+        'Verkehrsrecht', 'Mietrecht', 'Gesellschaftsrecht'
+    ],
+    'France': [
+        'avocat', 'cabinet d\'avocat', 'conseil juridique',
+        'avocat pénal', 'avocat familial', 'avocat du travail',
+        'avocat immobilier', 'avocat d\'entreprise', 'droit civil',
+        'avocat corporate', 'avocat successoral', 'juriste'
+    ],
+    'Italy': [
+        'avvocato', 'studio legale', 'consulenza legale',
+        'avvocato penalista', 'avvocato familiare', 'avvocato del lavoro',
+        'avvocato immobiliare', 'avvocato commerciale', 'diritto civile',
+        'avvocato aziendale', 'avvocato successioni', 'studio giuridico'
+    ]
+}
+
+def get_search_terms_for_country(country: str) -> List[str]:
+    """Get search terms for a specific country"""
+    return SEARCH_TERMS.get(country, SEARCH_TERMS['USA'])
+
+def get_all_search_terms(countries: List[str]) -> List[str]:
+    """Get all search terms for multiple countries"""
+    terms = []
+    for country in countries:
+        terms.extend(get_search_terms_for_country(country))
+    return list(set(terms))  # Remove duplicates
+
 # ============= URL DISCOVERY (Google Maps) =============
 
 class URLCollector:
@@ -367,6 +462,7 @@ class URLCollector:
         self.driver = None
         self._stop = False
         self.collected = []
+        self.search_terms = []
         
     def setup_driver(self):
         """Setup Chrome driver"""
@@ -397,20 +493,18 @@ class URLCollector:
         self._stop = False
         self.collected = []
         
-        # Search terms per country
-        search_terms = [
-            "lawyer",
-            "attorney", 
-            "legal services",
-            "law firm",
-            "attorney at law"
-        ]
+        # Get country-specific search terms
+        self.search_terms = get_all_search_terms(countries)
+        state.add_log(f"[COLLECT] Using {len(self.search_terms)} search terms for {countries}")
         
         for country in countries:
             if self._stop:
                 break
-                
-            for term in search_terms:
+            
+            # Get terms for this specific country
+            country_terms = get_search_terms_for_country(country)
+            
+            for term in country_terms:
                 if len(self.collected) >= max_urls:
                     break
                 if self._stop:
@@ -851,6 +945,23 @@ def start_quick_scan_api():
     
     start_quick_scan(countries, passwords, usernames, threads, max_urls)
     return jsonify({'success': True})
+
+# Search terms endpoint
+@app.route('/api/search-terms')
+@require_auth
+def get_search_terms():
+    """Get search terms for countries"""
+    countries = request.args.getlist('countries')
+    if not countries:
+        countries = list(SEARCH_TERMS.keys())
+    
+    terms = get_all_search_terms(countries)
+    by_country = {c: get_search_terms_for_country(c) for c in countries}
+    
+    return jsonify({
+        'all_terms': terms,
+        'by_country': by_country
+    })
 
 # Proxy endpoints
 @app.route('/api/proxy/fetch', methods=['POST'])
