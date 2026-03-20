@@ -31,6 +31,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+REM Accept host key first
+echo Step 0: Accepting host key...
+echo y | plink -batch fattiger@135.233.113.190 -pw %PASSWORD% "echo host key accepted" 2>nul
+
 REM Kill old process
 echo Step 1: Killing old process...
 plink -batch fattiger@135.233.113.190 -pw %PASSWORD% "pkill -f web_scanner.py" 2>nul
