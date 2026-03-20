@@ -1,0 +1,12 @@
+# WordPress URL Lists for Testing
+
+# You can add your own WordPress sites here for direct testing
+# One URL per line, comments start with #
+
+# Example WordPress sites (replace with your targets)
+https://wordpress.org
+https://wordpress.com
+https://demo.wordpress.org
+
+# Add your URLs below:
+

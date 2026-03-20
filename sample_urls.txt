@@ -1,0 +1,10 @@
+# Sample WordPress URLs for testing
+# Format: one URL per line
+# You can use http:// or https:// or just the domain
+
+https://example-wordpress-site.com
+https://demo.wordpress.org
+https://test-wp-site.com
+http://wordpress-blog.net
+
+# Add your target WordPress sites below:
