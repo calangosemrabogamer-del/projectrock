@@ -11,3 +11,4 @@ aiohttp>=3.9.0
 flask>=2.3.0
 flask-cors>=4.0.0
 flask-login>=0.6.0
+webdriver-manager>=4.0.0

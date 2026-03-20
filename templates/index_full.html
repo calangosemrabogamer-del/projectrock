@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Scanner - Full Edition</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px 20px;
+            border-bottom: 2px solid #00d4ff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { color: #00d4ff; font-size: 24px; }
+        .header .logout { color: #ff4757; text-decoration: none; }
+        
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+        
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 13px; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: #fff;
+            font-size: 13px;
+        }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .btn-primary { background: #00d4ff; color: #000; }
+        .btn-primary:hover { background: #00a8cc; }
+        .btn-danger { background: #ff4757; color: #fff; }
+        .btn-success { background: #2ed573; color: #000; }
+        .btn-warning { background: #ffa502; color: #000; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        
+        .status-bar {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .progress { height: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; overflow: hidden; margin-top: 8px; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #00d4ff, #2ed573); transition: width 0.3s; }
+        
+        .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 15px; }
+        .stat-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-box .value { font-size: 24px; font-weight: bold; color: #00d4ff; }
+        .stat-box .label { color: #888; font-size: 11px; margin-top: 3px; }
+        
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tab {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 5px 5px 0 0;
+            cursor: pointer;
+        }
+        .tab:hover { background: rgba(255, 255, 255, 0.1); }
+        .tab.active { background: #00d4ff; color: #000; }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .log-container {
+            background: #0d0d0d;
+            border-radius: 5px;
+            padding: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        .log-entry { margin-bottom: 3px; }
+        .log-entry.info { color: #00d4ff; }
+        .log-entry.success { color: #2ed573; }
+        .log-entry.error { color: #ff4757; }
+        
+        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .data-table th, .data-table td { padding: 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .data-table th { background: rgba(0,0,0,0.3); color: #00d4ff; }
+        
+        .tag { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+        .tag.success { background: #2ed573; color: #000; }
+        .tag.failed { background: #ff4757; color: #fff; }
+        .tag.error { background: #ffa502; color: #000; }
+        
+        .scroll-area { max-height: 300px; overflow-y: auto; }
+        .checkbox-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .checkbox-group label { color: #aaa; font-size: 12px; display: flex; align-items: center; gap: 4px; }
+        
+        @media (max-width: 900px) {
+            .grid, .grid-3, .stats { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 WordPress Scanner - Full Edition</h1>
+        <a href="/logout" class="logout">Logout</a>
+    </div>
+    
+    <div class="container">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <span id="status-text">Status: Idle</span>
+            <span id="url-count">URLs in DB: 0</span>
+        </div>
+        <div class="progress">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="stats">
+            <div class="stat-box"><div class="value" id="stat-collected">0</div><div class="label">Collected</div></div>
+            <div class="stat-box"><div class="value" id="stat-verified">0</div><div class="label">Verified WP</div></div>
+            <div class="stat-box"><div class="value" id="stat-scanned">0</div><div class="label">Scanned</div></div>
+            <div class="stat-box"><div class="value" id="stat-found" style="color:#2ed573">0</div><div class="label">Found</div></div>
+            <div class="stat-box"><div class="value" id="stat-results">0</div><div class="label">Results</div></div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('discovery')">🔍 URL Discovery</div>
+            <div class="tab" onclick="switchTab('scan')">⚡ Quick Scan</div>
+            <div class="tab" onclick="switchTab('manual')">📡 Manual Scan</div>
+            <div class="tab" onclick="switchTab('proxy')">🌐 Proxy Manager</div>
+            <div class="tab" onclick="switchTab('urls')">🔗 URLs</div>
+            <div class="tab" onclick="switchTab('results')">📊 Results</div>
+            <div class="tab" onclick="switchTab('logs')">📝 Logs</div>
+        </div>
+        
+        <!-- Discovery Tab -->
+        <div class="tab-content active" id="tab-discovery">
+            <div class="grid">
+                <div class="card">
+                    <h2>🔍 URL Discovery (Google Maps)</h2>
+                    <div class="form-group">
+                        <label>Countries to Search:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="country" value="USA" checked> USA</label>
+                            <label><input type="checkbox" name="country" value="UK"> UK</label>
+                            <label><input type="checkbox" name="country" value="Canada"> Canada</label>
+                            <label><input type="checkbox" name="country" value="Australia"> Australia</label>
+                            <label><input type="checkbox" name="country" value="Brazil"> Brazil</label>
+                            <label><input type="checkbox" name="country" value="Germany"> Germany</label>
+                            <label><input type="checkbox" name="country" value="France"> France</label>
+                            <label><input type="checkbox" name="country" value="Spain"> Spain</label>
+                            <label><input type="checkbox" name="country" value="Portugal"> Portugal</label>
+                            <label><input type="checkbox" name="country" value="Italy"> Italy</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Max URLs to Collect:</label>
+                        <input type="number" id="discovery-max" value="100" min="10" max="500">
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-discovery-start" onclick="startDiscovery()">▶ Start Discovery</button>
+                        <button class="btn btn-danger" id="btn-discovery-stop" onclick="stopDiscovery()" disabled>⏹ Stop</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>📋 Discovery Options</h2>
+                    <div class="form-group">
+                        <label>Search Terms (used for all countries):</label>
+                        <textarea id="search-terms">lawyer,attorney,law firm,legal services</textarea>
+                    </div>
+                    <p style="color:#666;font-size:12px;">
+                        Note: Discovery uses your server's direct IP. For anonymity, 
+                        use proxy/TOR in Manual Scan after collecting URLs.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Scan Tab -->
+        <div class="tab-content" id="tab-scan">
+            <div class="card">
+                <h2>⚡ Quick Scan (Discovery + Verify + Scan)</h2>
+                <div class="grid">
+                    <div>
+                        <div class="form-group">
+                            <label>Countries:</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" name="qs-country" value="USA" checked> USA</label>
+                                <label><input type="checkbox" name="qs-country" value="UK"> UK</label>
+                                <label><input type="checkbox" name="qs-country" value="Brazil"> Brazil</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Max URLs:</label>
+                            <input type="number" id="qs-max" value="30" min="5" max="100">
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label>Passwords (one per line):</label>
+                            <textarea id="qs-passwords">admin
+123456
+password
+wordpress
+12345678</textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Threads:</label>
+                    <select id="qs-threads">
+                        <option value="1">1 Thread</option>
+                        <option value="3" selected>3 Threads</option>
+                        <option value="5">5 Threads</option>
+                    </select>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-success" id="btn-quick-start" onclick="startQuickScan()">🚀 Start Quick Scan</button>
+                    <button class="btn btn-danger" id="btn-quick-stop" onclick="stopScan()" disabled>⏹ Stop</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Manual Scan Tab -->
+        <div class="tab-content" id="tab-manual">
+            <div class="grid">
+                <div class="card">
+                    <h2>📡 Manual Scan</h2>
+                    <div class="form-group">
+                        <label>URLs to Scan (one per line):</label>
+                        <textarea id="scan-urls" placeholder="https://example1.com&#10;https://example2.com"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Or load from database:</label>
+                        <select id="scan-filter">
+                            <option value="all">All URLs</option>
+                            <option value="wordpress" selected>WordPress Only</option>
+                            <option value="unverified">Unverified</option>
+                        </select>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="loadUrlsFromDb()">📥 Load URLs</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>⚙️ Scan Configuration</h2>
+                    <div class="form-group">
+                        <label>Usernames to try:</label>
+                        <textarea id="scan-usernames">admin
+administrator
+root</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Passwords (one per line):</label>
+                        <textarea id="scan-passwords">admin
+123456
+password
+wordpress
+12345678
+12345</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Threads:</label>
+                        <select id="scan-threads">
+                            <option value="1">1 Thread</option>
+                            <option value="3" selected>3 Threads</option>
+                            <option value="5">5 Threads</option>
+                            <option value="10">10 Threads</option>
+                        </select>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-scan-start" onclick="startScan()">▶ Start Scan</button>
+                        <button class="btn btn-danger" id="btn-scan-stop" onclick="stopScan()" disabled>⏹ Stop</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-top:20px">
+                <h2>🗄️ URL Management</h2>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="verifyUrls()">✓ Verify WordPress</button>
+                    <button class="btn btn-success" onclick="showAddUrls()">➕ Add URLs</button>
+                    <button class="btn btn-danger" onclick="clearUrls()">🗑 Clear All</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Proxy Tab -->
+        <div class="tab-content" id="tab-proxy">
+            <div class="grid">
+                <div class="card">
+                    <h2>🌐 Proxy Manager</h2>
+                    <div class="btn-group" style="margin-bottom:15px">
+                        <button class="btn btn-primary" onclick="fetchProxies()">📥 Fetch Proxies</button>
+                        <button class="btn btn-success" onclick="testProxies()">✓ Test Proxies</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Working Proxies: <span id="proxy-count">0</span></label>
+                        <div class="scroll-area">
+                            <div id="proxy-list" style="font-size:11px;color:#888;">No proxies loaded</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>🔒 Anonymity Options</h2>
+                    <div class="form-group">
+                        <label>Connection Mode:</label>
+                        <select id="anon-mode">
+                            <option value="direct">Direct (Fastest)</option>
+                            <option value="proxy">Use Proxies</option>
+                            <option value="tor">TOR Network (Slowest)</option>
+                        </select>
+                    </div>
+                    <p style="color:#666;font-size:12px;margin-top:10px">
+                        <strong>Note:</strong> TOR requires TOR service installed on the server.
+                        For cloud deployment, using proxies is recommended.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- URLs Tab -->
+        <div class="tab-content" id="tab-urls">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+                    <h2>🔗 URL Database</h2>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="refreshUrls()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="clearUrls()">🗑 Clear</button>
+                    </div>
+                </div>
+                <div class="scroll-area">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>URL</th><th>WordPress</th><th>Verified</th><th>Scan Result</th></tr>
+                        </thead>
+                        <tbody id="urls-table">
+                            <tr><td colspan="4" style="text-align:center;color:#888">No URLs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Tab -->
+        <div class="tab-content" id="tab-results">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+                    <h2>📊 Scan Results</h2>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="refreshResults()">🔄 Refresh</button>
+                        <button class="btn btn-success" onclick="exportResults()">📥 Export CSV</button>
+                    </div>
+                </div>
+                <div class="scroll-area">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>URL</th><th>Username</th><th>Password</th><th>Status</th><th>Details</th></tr>
+                        </thead>
+                        <tbody id="results-table">
+                            <tr><td colspan="5" style="text-align:center;color:#888">No results</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Logs Tab -->
+        <div class="tab-content" id="tab-logs">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+                    <h2>📝 Activity Logs</h2>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="refreshLogs()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="clearLogs()">🗑 Clear</button>
+                    </div>
+                </div>
+                <div class="log-container" id="log-container">
+                    <div class="log-entry info">[SYSTEM] Scanner ready</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isRunning = false;
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        }
+        
+        // Status update loop
+        setInterval(updateStatus, 1000);
+        
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                document.getElementById('status-text').textContent = `Status: ${data.status}`;
+                document.getElementById('url-count').textContent = `URLs in DB: ${data.urls_count}`;
+                document.getElementById('progress-bar').style.width = `${data.progress}%`;
+                
+                document.getElementById('stat-collected').textContent = data.stats.collected;
+                document.getElementById('stat-verified').textContent = data.stats.verified;
+                document.getElementById('stat-scanned').textContent = data.stats.scanned;
+                document.getElementById('stat-found').textContent = data.stats.found;
+                document.getElementById('stat-results').textContent = data.results_count;
+                
+                // Update button states
+                const discovering = data.discovering;
+                const scanning = data.scanning;
+                
+                document.getElementById('btn-discovery-start').disabled = discovering;
+                document.getElementById('btn-discovery-stop').disabled = !discovering;
+                document.getElementById('btn-quick-start').disabled = scanning || discovering;
+                document.getElementById('btn-quick-stop').disabled = !scanning && !discovering;
+                document.getElementById('btn-scan-start').disabled = scanning || discovering;
+                document.getElementById('btn-scan-stop').disabled = !scanning;
+            } catch(e) { console.error(e); }
+        }
+        
+        // Discovery
+        async function startDiscovery() {
+            const countries = Array.from(document.querySelectorAll('input[name="country"]:checked')).map(c => c.value);
+            const max = parseInt(document.getElementById('discovery-max').value);
+            
+            if (countries.length === 0) { alert('Select at least one country'); return; }
+            
+            await fetch('/api/discovery/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({countries, max_urls: max})
+            });
+        }
+        
+        async function stopDiscovery() {
+            await fetch('/api/discovery/stop', {method: 'POST'});
+        }
+        
+        // Quick Scan
+        async function startQuickScan() {
+            const countries = Array.from(document.querySelectorAll('input[name="qs-country"]:checked')).map(c => c.value);
+            const passwords = document.getElementById('qs-passwords').value.split('\n').filter(p => p.trim());
+            const usernames = ['admin', 'administrator', 'root'];
+            const threads = parseInt(document.getElementById('qs-threads').value);
+            const max = parseInt(document.getElementById('qs-max').value);
+            
+            if (countries.length === 0) { alert('Select at least one country'); return; }
+            
+            await fetch('/api/quick-scan/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({countries, passwords, usernames, threads, max_urls: max})
+            });
+        }
+        
+        // Manual Scan
+        async function startScan() {
+            let urls = document.getElementById('scan-urls').value.split('\n').filter(u => u.trim());
+            
+            if (urls.length === 0) {
+                const filter = document.getElementById('scan-filter').value;
+                const res = await fetch(`/api/urls?filter=${filter}`);
+                const data = await res.json();
+                urls = data.urls.map(u => u.url);
+            }
+            
+            if (urls.length === 0) { alert('No URLs to scan'); return; }
+            
+            const passwords = document.getElementById('scan-passwords').value.split('\n').filter(p => p.trim());
+            const usernames = document.getElementById('scan-usernames').value.split('\n').filter(u => u.trim());
+            const threads = parseInt(document.getElementById('scan-threads').value);
+            
+            await fetch('/api/scan/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({urls, passwords, usernames, threads})
+            });
+        }
+        
+        async function stopScan() {
+            await fetch('/api/scan/stop', {method: 'POST'});
+            await fetch('/api/discovery/stop', {method: 'POST'});
+        }
+        
+        // URLs
+        async function loadUrlsFromDb() {
+            const filter = document.getElementById('scan-filter').value;
+            const res = await fetch(`/api/urls?filter=${filter}`);
+            const data = await res.json();
+            document.getElementById('scan-urls').value = data.urls.map(u => u.url).join('\n');
+        }
+        
+        async function refreshUrls() {
+            const res = await fetch('/api/urls?filter=all');
+            const data = await res.json();
+            
+            const tbody = document.getElementById('urls-table');
+            if (data.urls.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888">No URLs</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.urls.map(u => `
+                <tr>
+                    <td>${u.url}</td>
+                    <td><span class="tag ${u.is_wordpress === 1 ? 'success' : u.is_wordpress === 0 ? 'failed' : ''}">${u.is_wordpress === 1 ? 'Yes' : u.is_wordpress === 0 ? 'No' : '?'}</span></td>
+                    <td>${u.verified_date || '-'}</td>
+                    <td>${u.scan_result || '-'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        async function verifyUrls() {
+            await fetch('/api/urls/verify', {method: 'POST'});
+            alert('Verification started in background');
+        }
+        
+        async function clearUrls() {
+            if (!confirm('Clear all URLs?')) return;
+            await fetch('/api/urls/clear', {method: 'POST'});
+            refreshUrls();
+        }
+        
+        function showAddUrls() {
+            const urls = prompt('Enter URLs (one per line):');
+            if (urls) {
+                fetch('/api/urls/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({urls})
+                }).then(() => refreshUrls());
+            }
+        }
+        
+        // Results
+        async function refreshResults() {
+            const res = await fetch('/api/results');
+            const data = await res.json();
+            
+            const tbody = document.getElementById('results-table');
+            if (data.results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888">No results</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.results.map(r => `
+                <tr>
+                    <td>${r.url}</td>
+                    <td>${r.username || '-'}</td>
+                    <td>${r.password || '-'}</td>
+                    <td><span class="tag ${r.status === 'success' ? 'success' : r.status === 'failed' ? 'failed' : 'error'}">${r.status}</span></td>
+                    <td>${r.details}</td>
+                </tr>
+            `).join('');
+        }
+        
+        function exportResults() {
+            window.location.href = '/api/results/export';
+        }
+        
+        // Logs
+        async function refreshLogs() {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            
+            const container = document.getElementById('log-container');
+            container.innerHTML = data.logs.map(l => {
+                let cls = 'info';
+                if (l.includes('[ERROR]') || l.includes('failed')) cls = 'error';
+                else if (l.includes('[SCAN]') || l.includes('Found') || l.includes('Complete')) cls = 'success';
+                return `<div class="log-entry ${cls}">${l}</div>`;
+            }).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        async function clearLogs() {
+            await fetch('/api/logs/clear', {method: 'POST'});
+            refreshLogs();
+        }
+        
+        // Proxy
+        async function fetchProxies() {
+            const res = await fetch('/api/proxy/fetch', {method: 'POST'});
+            const data = await res.json();
+            document.getElementById('proxy-count').textContent = data.count;
+            document.getElementById('proxy-list').textContent = data.proxies.join('\n') || 'None';
+        }
+        
+        async function testProxies() {
+            await fetch('/api/proxy/test', {method: 'POST'});
+            setTimeout(async () => {
+                const res = await fetch('/api/proxy/list');
+                const data = await res.json();
+                document.getElementById('proxy-count').textContent = data.working.length;
+                document.getElementById('proxy-list').textContent = data.working.join('\n') || 'None';
+            }, 5000);
+        }
+        
+        // Auto-refresh
+        setInterval(refreshLogs, 2000);
+        setInterval(refreshResults, 5000);
+        
+        // Initial load
+        refreshUrls();
+    </script>
+</body>
+</html>

