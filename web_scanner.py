@@ -705,7 +705,7 @@ def require_auth(f):
 @app.route('/')
 @require_auth
 def index():
-    return render_template('index_full.html')
+    return render_template('index_full.html', _force_embedded=True)
 
 # ============= API ROUTES =============
 
